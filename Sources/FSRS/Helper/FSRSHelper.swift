@@ -116,7 +116,7 @@ extension Date {
     ///
     /// - Note: process-global and not synchronized. Set it once during startup,
     ///   before any scheduling call, and leave it alone.
-    nonisolated(unsafe) static var dayBoundaryTimeZone: TimeZone = TimeZone(secondsFromGMT: 0) ?? .autoupdatingCurrent
+    public nonisolated(unsafe) static var dayBoundaryTimeZone: TimeZone = TimeZone(secondsFromGMT: 0) ?? .autoupdatingCurrent
 
     static func dateDiffInDays(from last: Date?, to cur: Date) -> Double {
         guard let last = last else { return 0.0 }
