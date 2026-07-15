@@ -95,13 +95,48 @@ extension Date {
         return r
     }
 
+    /// Timezone whose midnight separates one "day" from the next.
+    ///
+    /// Defaults to UTC, matching upstream exactly — every inherited test stays
+    /// green, unmodified, in every timezone. Set it once at startup to opt into a
+    /// local boundary.
+    ///
+    /// **Why this knob exists.** A UTC boundary lands at 07:00 for a UTC+7 user —
+    /// the middle of a morning study session. Measured there: reviewing at 06:00
+    /// then again at 08:00 (two hours apart, one sitting) counts as "one day
+    /// later" and takes the next-day stability branch instead of short-term, a
+    /// ~3x divergence; conversely 23:00 → 06:00 next day counts as "same day".
+    /// Anki — the reference implementation for this family — uses a *local*
+    /// boundary (default 4am cutoff), so UTC matches neither user intuition nor
+    /// Anki.
+    ///
+    /// This is the whole fork: upstream behaviour is untouched by default, and a
+    /// local boundary becomes reachable. Offered upstream as a config option; if
+    /// accepted, delete the fork and depend on upstream again.
+    ///
+    /// - Note: process-global and not synchronized. Set it once during startup,
+    ///   before any scheduling call, and leave it alone.
+    nonisolated(unsafe) static var dayBoundaryTimeZone: TimeZone = TimeZone(secondsFromGMT: 0) ?? .autoupdatingCurrent
+
     static func dateDiffInDays(from last: Date?, to cur: Date) -> Double {
         guard let last = last else { return 0.0 }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .autoupdatingCurrent
+        calendar.timeZone = dayBoundaryTimeZone
         let startOfLast = calendar.startOfDay(for: last)
         let startOfCur = calendar.startOfDay(for: cur)
-        return floor((startOfCur.timeIntervalSince1970 - startOfLast.timeIntervalSince1970) / (24 * 60 * 60))
+        // Count calendar days rather than seconds / 86400.
+        //
+        // Upstream's division is safe only because its boundary is pinned to UTC,
+        // which has no DST. Under a local boundary it breaks: a spring-forward day
+        // is 23h, and 23h / 86400 floors to 0 — the day vanishes silently.
+        //
+        // Measured with `dayBoundaryTimeZone = .current`: seconds/86400 turned 18
+        // upstream-green scheduler tests red under America/New_York while staying
+        // green under Asia/Ho_Chi_Minh, which has no DST. A VN-only test run would
+        // not have caught it. `dateComponents(_:from:to:)` counts boundaries
+        // crossed, so 23h and 25h days are both correct.
+        let days = calendar.dateComponents([.day], from: startOfLast, to: startOfCur).day ?? 0
+        return Double(days)
     }
 
     func toString(_ dateFormat: String) -> String? {
